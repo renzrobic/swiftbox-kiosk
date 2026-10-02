@@ -83,7 +83,7 @@ export default function App() {
 
     try {
       const parcelData = await FirebaseService.getParcel(parcelId);
-      if (parcelData && parcelData.status === 'IN_LOCKER') {
+      if (parcelData && (parcelData.status === 'IN_LOCKER' || parcelData.status === 'IN_TERMINAL')) {
         setSessionData(prev => ({ 
           ...prev, 
           parcelId: parcelId, 
@@ -125,13 +125,22 @@ export default function App() {
       const existingLocker = await FirebaseService.findLockerByPhone(sessionData.recipientPhone);
       const targetLocker = existingLocker || "L01"; 
 
-      await FirebaseService.assignParcelToLocker(
+      const result = await FirebaseService.assignParcelToLocker(
         sessionData.parcelId, 
         sessionData.recipientPhone,
-        targetLocker
+        targetLocker,
+        {
+          recipientName: sessionData.recipientName,
+          lockerSize: sessionData.lockerSize
+        }
       );
 
-      setSessionData(prev => ({ ...prev, lockerId: targetLocker }));
+      const assignedLocker = result?.lockerId || targetLocker;
+      setSessionData(prev => ({ 
+        ...prev, 
+        lockerId: assignedLocker,
+        claimPin: result?.pin || ''
+      }));
       setTimeout(() => setCurrentScreen('LOCKER_ACTION'), 2500);
     } catch (error) {
       Alert.alert("System Error", "Could not complete delivery.");
@@ -204,6 +213,10 @@ export default function App() {
         return (
           <SuccessScreen 
             isRider={sessionData.mode === 'RIDER'} 
+            parcelId={sessionData.parcelId}
+            lockerId={sessionData.lockerId}
+            recipientPhone={sessionData.recipientPhone}
+            claimPin={sessionData.claimPin}
             onFinish={async () => {
               if (sessionData.mode === 'CUSTOMER') {
                 await FirebaseService.releaseLocker(sessionData.parcelId, sessionData.lockerId);

@@ -1,10 +1,33 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { THEME } from '../constants/theme';
 import { Delete, ArrowRight } from 'lucide-react-native';
 
 export const CustomKeypad = ({ onKeyPress, onDelete, onAction, actionLabel = "Enter" }) => {
   const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0];
+
+  // ⌨️ Physical PC Keyboard Support for web testing
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      if (e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        onKeyPress(e.key);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        onDelete();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        onAction();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onKeyPress, onDelete, onAction]);
 
   return (
     <View style={styles.container}>

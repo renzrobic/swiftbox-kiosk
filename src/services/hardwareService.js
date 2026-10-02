@@ -1,15 +1,13 @@
-import { db } from './firebaseConfig';
-import { ref, update, onValue } from 'firebase/database';
+import { db } from '../config/firebaseConfig';
+import { ref, onValue } from 'firebase/database';
 
 export const HardwareService = {
-  
-  // Send the unlock command to Firebase
+  // Authoritative unlock actuation is handled server-side by swiftbox-backend
   unlock: async (lockerId) => {
-    const lockerRef = ref(db, `lockers/${lockerId}`);
-    return update(lockerRef, { door_command: 'PENDING_UNLOCK' });
+    return { success: true, message: 'Unlock actuation managed by central backend' };
   },
 
-  // Listen for the ESP32 to confirm the door is actually closed
+  // Telemetry listener: Listen for the ESP32 reed switch to confirm the door physical state
   watchDoorStatus: (lockerId, callback) => {
     const sensorRef = ref(db, `lockers/${lockerId}/door_sensor`);
     return onValue(sensorRef, (snapshot) => {
@@ -17,3 +15,5 @@ export const HardwareService = {
     });
   }
 };
+
+export default HardwareService;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Animated, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from 'react-native';
 import { THEME } from '../constants/theme';
 import { SwiftVoice } from '../services/voiceService';
 import { CustomKeypad } from '../components/CustomKeypad';
@@ -27,7 +27,18 @@ export const ManualEntryScreen = ({ mode, onConfirm, onBack }) => {
       duration: 1000,
       useNativeDriver: true,
     }).start();
-  }, [mode]);
+
+    if (typeof window !== 'undefined') {
+      const handleGlobalEsc = (e) => {
+        if (e.key === 'Escape' && onBack) {
+          e.preventDefault();
+          onBack();
+        }
+      };
+      window.addEventListener('keydown', handleGlobalEsc);
+      return () => window.removeEventListener('keydown', handleGlobalEsc);
+    }
+  }, [mode, onBack]);
 
   const handleKeyPress = (key) => {
     setValue(prev => prev + key);
@@ -109,7 +120,7 @@ const styles = StyleSheet.create({
   },
   subtitle: { 
     fontFamily: THEME.FONTS.FAMILY_MEDIUM, 
-    fontSize: 22, 
+    fontSize: 20, 
     color: THEME.COLORS.SECONDARY_LABEL, 
     marginTop: THEME.SPACING.G12,
   },
@@ -150,8 +161,8 @@ const styles = StyleSheet.create({
   },
   cancelText: { 
     color: THEME.COLORS.SECONDARY_LABEL, 
-    fontSize: 20,
-    fontFamily: THEME.FONTS.FAMILY_MEDIUM,
+    fontSize: 20, 
+    fontFamily: THEME.FONTS.FAMILY_MEDIUM, 
     textDecorationLine: 'underline',
   }
 });

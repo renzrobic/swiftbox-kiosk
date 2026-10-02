@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Animated, Platform } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import jsQR from 'jsqr';
 import { THEME } from '../constants/theme';
 import { SwiftVoice } from '../services/voiceService';
 import { Scan, QrCode } from 'lucide-react-native';
@@ -8,6 +9,7 @@ import { Scan, QrCode } from 'lucide-react-native';
 export const ScannerScreen = ({ mode, onNavigate, onScan }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scannedRef = useRef(false);
 
   useEffect(() => {
     SwiftVoice.say("Please scan the QR code.");
@@ -22,11 +24,68 @@ export const ScannerScreen = ({ mode, onNavigate, onScan }) => {
     }
   }, []);
 
-  const handleBarCodeScanned = ({ data }) => {
-    if (data) {
-      onScan(data); 
+  const handleBarCodeScanned = (event) => {
+    if (scannedRef.current) return;
+    
+    // Normalize payload across Web (nativeEvent.data) and Native (event.data)
+    const rawData = 
+      (typeof event === 'string' ? event : null) || 
+      event?.data || 
+      event?.nativeEvent?.data || 
+      '';
+
+    if (rawData && rawData.trim().length > 0) {
+      scannedRef.current = true;
+      console.log('📦 QR Code Scanned Successfully:', rawData);
+      onScan(rawData.trim());
     }
   };
+
+  // 🚀 Local Web Camera Frame Scanner (Direct 2D Canvas + jsQR Engine)
+  // Bypasses web worker / CDN limits so webcam scanning works reliably in Chrome/Edge
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+
+    let timer = null;
+    let isMounted = true;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    const scanVideoFrame = () => {
+      if (!isMounted || scannedRef.current) return;
+
+      try {
+        const video = document.querySelector('video');
+        if (video && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'attemptBoth',
+          });
+
+          if (code && code.data && code.data.trim()) {
+            console.log('✅ QR Code Detected by local jsQR engine:', code.data);
+            handleBarCodeScanned(code.data);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Frame scan notice:', err.message);
+      }
+
+      timer = setTimeout(scanVideoFrame, 200);
+    };
+
+    timer = setTimeout(scanVideoFrame, 600);
+
+    return () => {
+      isMounted = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   if (!permission || !permission.granted) {
     return (
@@ -35,6 +94,12 @@ export const ScannerScreen = ({ mode, onNavigate, onScan }) => {
         <Text style={styles.errorText}>Camera access is required for scanning.</Text>
         <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
           <Text style={styles.permissionButtonText}>Allow camera</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.manualButton, { marginTop: 24 }]} 
+          onPress={() => onNavigate('MANUAL_ENTRY')}
+        >
+          <Text style={styles.manualButtonText}>Enter manually</Text>
         </TouchableOpacity>
       </View>
     );
@@ -49,6 +114,7 @@ export const ScannerScreen = ({ mode, onNavigate, onScan }) => {
           resizeMode="contain"
         />
         <Text style={styles.title}>Scan QR code</Text>
+        <Text style={styles.subtitle}>Hold QR pass in front of camera</Text>
       </Animated.View>
 
       <Animated.View style={[styles.cameraContainer, { opacity: fadeAnim }]}>
@@ -56,6 +122,9 @@ export const ScannerScreen = ({ mode, onNavigate, onScan }) => {
           <CameraView
             style={styles.camera}
             onBarcodeScanned={handleBarCodeScanned}
+            barcodeScannerSettings={{
+              barcodeTypes: ['qr'],
+            }}
             facing="front"
           />
           <View style={styles.overlay}>
@@ -100,13 +169,13 @@ const styles = StyleSheet.create({
   },
   header: { 
     position: 'absolute',
-    top: THEME.SPACING.G80,
+    top: THEME.SPACING.G48 || 48,
     alignItems: 'center', 
   },
   logo: { 
     width: 120, 
-    height: 40, 
-    marginBottom: THEME.SPACING.G24 
+    height: 36, 
+    marginBottom: 12 
   },
   title: { 
     fontFamily: THEME.FONTS.FAMILY_BOLD, 
@@ -114,13 +183,20 @@ const styles = StyleSheet.create({
     color: THEME.COLORS.LABEL,
     letterSpacing: THEME.FONTS.TRACKING_HEADER * 32,
   },
+  subtitle: {
+    fontFamily: THEME.FONTS.FAMILY_MEDIUM,
+    fontSize: 14,
+    color: THEME.COLORS.SECONDARY_LABEL,
+    marginTop: 4,
+  },
   cameraContainer: { 
     justifyContent: 'center', 
     alignItems: 'center',
+    marginTop: 20,
   },
   cameraFrame: {
-    width: 480,
-    height: 480,
+    width: 380,
+    height: 380,
     borderRadius: THEME.SPACING.RADIUS_L,
     overflow: 'hidden',
     backgroundColor: THEME.COLORS.WHITE,
@@ -136,32 +212,32 @@ const styles = StyleSheet.create({
   },
   footer: { 
     position: 'absolute',
-    bottom: THEME.SPACING.G64,
+    bottom: THEME.SPACING.G40 || 40,
     alignItems: 'center',
     width: '100%',
   },
   manualButton: { 
     backgroundColor: THEME.COLORS.ACCENT,
-    paddingVertical: THEME.SPACING.G24,
+    paddingVertical: 18,
     paddingHorizontal: THEME.SPACING.G80,
     borderRadius: THEME.SPACING.RADIUS_BUTTON,
-    width: 420,
+    width: 380,
     alignItems: 'center',
     ...THEME.SHADOWS.MD,
   },
   manualButtonText: {
     color: THEME.COLORS.WHITE,
-    fontSize: 22,
+    fontSize: 20,
     fontFamily: THEME.FONTS.FAMILY_SEMIBOLD,
-    letterSpacing: THEME.FONTS.TRACKING_BODY * 22,
+    letterSpacing: THEME.FONTS.TRACKING_BODY * 20,
   },
   cancelButton: {
-    marginTop: THEME.SPACING.G24,
-    padding: THEME.SPACING.G16,
+    marginTop: 14,
+    padding: 10,
   },
   cancelText: { 
     color: THEME.COLORS.SECONDARY_LABEL, 
-    fontSize: 20, 
+    fontSize: 16, 
     fontFamily: THEME.FONTS.FAMILY_MEDIUM, 
     textDecorationLine: 'underline',
   },
